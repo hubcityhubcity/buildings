@@ -20,7 +20,7 @@ A multi-regime forex signal system built for **live data, Android alerts, resear
   - insufficient reward/risk
   - duplicate alerts
   - daily alert cap
-- Sends structured alerts to your phone through Telegram
+- Sends structured alerts to your phone by **email**; Telegram remains an optional fallback
 - Stores every accepted/rejected signal in SQLite for review
 - Includes a backtest module designed to use next-bar entries and configurable spread/slippage assumptions rather than perfect fills
 
@@ -47,18 +47,28 @@ Market data client ---> indicators ---> regime detector
            risk gate + duplicate protection + SQLite ledger
                                       |
                                       v
-                        Telegram push alert to phone
+                       Email push alert to phone
 ```
 
-## Phone alerts
+## Phone alerts — email first
 
-This project uses a private Telegram bot because it is simple, fast, and works well on Android.
+The default notification path is authenticated SMTP email. Gmail notifications on Android can therefore surface accepted setups directly on your phone.
 
-1. Open Telegram and message **@BotFather**
-2. Create a bot and copy its token
-3. Send your new bot any message
-4. Retrieve your `chat_id` using Telegram's `getUpdates` endpoint
-5. Put `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`
+Configure the sender and destination in private environment secrets:
+
+```bash
+ALERT_CHANNEL=email
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_USERNAME=your-sending-address@example.com
+EMAIL_APP_PASSWORD=your-email-app-password
+EMAIL_FROM=your-sending-address@example.com
+EMAIL_TO=the-address-you-read-on-your-phone@example.com
+```
+
+`EMAIL_APP_PASSWORD` is secret. Do not commit, screenshot, paste, or send it in chat.
+
+Telegram remains available later by changing `ALERT_CHANNEL=telegram` and adding the Telegram credentials.
 
 Alerts include instrument/timeframe, long/short direction, regime/strategy, entry zone, stop, target, estimated reward/risk, confidence score, reasoning, and risk-gate status.
 
@@ -89,7 +99,7 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
-# Add your practice OANDA and Telegram values to .env
+# Add practice OANDA and email-alert values to .env
 
 python -m fortress_fx.main --once
 ```
@@ -118,6 +128,7 @@ MIN_CONFIDENCE=70
 MAX_SPREAD_PIPS=2.0
 MAX_ALERTS_PER_DAY=8
 SIGNAL_ONLY=true
+ALERT_CHANNEL=email
 ```
 
 ## Roadmap
@@ -125,7 +136,8 @@ SIGNAL_ONLY=true
 ### Phase 1 — Signal foundation
 - [x] Repository and technical specification
 - [x] Live-data adapter interface
-- [x] Telegram notification adapter
+- [x] Email notification adapter
+- [x] Optional Telegram notification adapter
 - [x] Strategy ensemble and risk gate
 - [x] Signal ledger
 - [x] Backtest baseline
@@ -146,7 +158,7 @@ SIGNAL_ONLY=true
 
 ## Security
 
-Never commit OANDA tokens, Telegram bot tokens, broker passwords, or account IDs linked to real funds. Rotate a token immediately if it is exposed.
+Never commit OANDA tokens, email app passwords, Telegram bot tokens, broker passwords, or account IDs linked to real funds. Rotate a credential immediately if it is exposed.
 
 ## License
 
