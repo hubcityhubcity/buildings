@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Protocol
 
 from .config import Settings
+from .email_alerts import EmailNotifier
 from .ledger import SignalLedger
+from .models import Quote, Signal
 from .oanda import OandaClient
 from .risk import RiskGate
 from .strategies import evaluate_strategies
 from .telegram import TelegramNotifier
+
+
+class Notifier(Protocol):
+    def send_signal(self, signal: Signal, quote: Quote) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -25,8 +32,20 @@ class Scanner:
         self.market = OandaClient(settings)
         self.ledger = SignalLedger(settings.db_path)
         self.risk_gate = RiskGate(settings)
-        self.notifier = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
+        self.notifier: Notifier = self._build_notifier()
         self.logger = logging.getLogger(__name__)
+
+    def _build_notifier(self) -> Notifier:
+        if self.settings.alert_channel == "email":
+            return EmailNotifier(
+                smtp_host=self.settings.email_smtp_host,
+                smtp_port=self.settings.email_smtp_port,
+                username=self.settings.email_username,
+                app_password=self.settings.email_app_password,
+                sender=self.settings.email_from,
+                recipient=self.settings.email_to,
+            )
+        return TelegramNotifier(self.settings.telegram_bot_token, self.settings.telegram_chat_id)
 
     def scan_pair(self, instrument: str, timeframe: str) -> ScanOutcome:
         candles = self.market.candles(instrument, timeframe, self.settings.candle_count)
@@ -49,7 +68,12 @@ class Scanner:
             return ScanOutcome(instrument, timeframe, "VETOED", "; ".join(decision.reasons))
 
         self.notifier.send_signal(signal, quote)
-        return ScanOutcome(instrument, timeframe, "ALERT_SENT", f"{signal.direction.value} {signal.strategy}")
+        return ScanOutcome(
+            instrument,
+            timeframe,
+            "ALERT_SENT",
+            f"{signal.direction.value} {signal.strategy} via {self.settings.alert_channel}",
+        )
 
     def scan_all(self) -> list[ScanOutcome]:
         outcomes: list[ScanOutcome] = []
