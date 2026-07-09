@@ -3,7 +3,7 @@
 //| Demo-first automation scaffold with FTMO-style guardrails.        |
 //+------------------------------------------------------------------+
 #property copyright "Hub City"
-#property version   "0.1"
+#property version   "0.2"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -30,6 +30,17 @@ input int    EMA_SLOW_PERIOD                = 50;
 input int    RSI_PERIOD                     = 14;
 input int    ATR_PERIOD                     = 14;
 input double MIN_REWARD_RISK                = 1.50;
+
+struct TradeSignal
+{
+   string direction;
+   double entry;
+   double stop_loss;
+   double take_profit;
+   double risk_points;
+   double reward_points;
+   double lots;
+};
 
 string       g_symbol;
 datetime     g_day_start_time = 0;
@@ -81,18 +92,6 @@ void OnTick()
 
    ExecuteSignal(signal);
 }
-
-//+------------------------------------------------------------------+
-struct TradeSignal
-{
-   string direction;
-   double entry;
-   double stop_loss;
-   double take_profit;
-   double risk_points;
-   double reward_points;
-   double lots;
-};
 
 //+------------------------------------------------------------------+
 void ResetDailyAnchor()
