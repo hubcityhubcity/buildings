@@ -3,7 +3,7 @@
 //| Demo-first automation scaffold with FTMO-style guardrails.        |
 //+------------------------------------------------------------------+
 #property copyright "Hub City"
-#property version   "0.4"
+#property version   "0.5"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -26,6 +26,8 @@ input int    MIN_SECONDS_BETWEEN_TRADES     = 900;
 input bool   WEEKEND_FLAT                   = true;
 
 input bool   ENABLE_SIGNALS                 = true;
+input bool   ENABLE_BUY_SIGNALS             = true;
+input bool   ENABLE_SELL_SIGNALS            = true;
 input bool   TRADE_ON_NEW_BAR_ONLY          = true;
 input bool   USE_SESSION_FILTER             = true;
 input int    SESSION_START_HOUR             = 7;
@@ -35,6 +37,10 @@ input int    EMA_FAST_PERIOD                = 20;
 input int    EMA_SLOW_PERIOD                = 50;
 input int    RSI_PERIOD                     = 14;
 input int    ATR_PERIOD                     = 14;
+input bool   USE_ADX_FILTER                 = true;
+input int    ADX_PERIOD                     = 14;
+input double MIN_ADX_VALUE                  = 18.0;
+input bool   REQUIRE_DI_ALIGNMENT           = true;
 input double ATR_STOP_MULTIPLIER            = 1.50;
 input double ATR_TAKE_PROFIT_MULTIPLIER     = 2.50;
 input double MIN_REWARD_RISK                = 1.50;
@@ -71,6 +77,7 @@ int          g_ema_fast_handle = INVALID_HANDLE;
 int          g_ema_slow_handle = INVALID_HANDLE;
 int          g_rsi_handle = INVALID_HANDLE;
 int          g_atr_handle = INVALID_HANDLE;
+int          g_adx_handle = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -84,14 +91,15 @@ int OnInit()
    g_ema_slow_handle = iMA(g_symbol, PERIOD_CURRENT, EMA_SLOW_PERIOD, 0, MODE_EMA, PRICE_CLOSE);
    g_rsi_handle = iRSI(g_symbol, PERIOD_CURRENT, RSI_PERIOD, PRICE_CLOSE);
    g_atr_handle = iATR(g_symbol, PERIOD_CURRENT, ATR_PERIOD);
+   g_adx_handle = iADX(g_symbol, PERIOD_CURRENT, ADX_PERIOD);
 
-   if(g_ema_fast_handle == INVALID_HANDLE || g_ema_slow_handle == INVALID_HANDLE || g_rsi_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE)
+   if(g_ema_fast_handle == INVALID_HANDLE || g_ema_slow_handle == INVALID_HANDLE || g_rsi_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE || g_adx_handle == INVALID_HANDLE)
    {
       Print("Fortress FX failed to create indicator handles.");
       return(INIT_FAILED);
    }
 
-   Print("Fortress FX initialized on ", g_symbol, ". EXECUTION_ENABLED=", EXECUTION_ENABLED, ", ENABLE_SIGNALS=", ENABLE_SIGNALS, ", v0.4 filters active.");
+   Print("Fortress FX initialized on ", g_symbol, ". EXECUTION_ENABLED=", EXECUTION_ENABLED, ", ENABLE_SIGNALS=", ENABLE_SIGNALS, ", v0.5 ADX/directional filters active.");
    return(INIT_SUCCEEDED);
 }
 
@@ -102,6 +110,7 @@ void OnDeinit(const int reason)
    if(g_ema_slow_handle != INVALID_HANDLE) IndicatorRelease(g_ema_slow_handle);
    if(g_rsi_handle != INVALID_HANDLE) IndicatorRelease(g_rsi_handle);
    if(g_atr_handle != INVALID_HANDLE) IndicatorRelease(g_atr_handle);
+   if(g_adx_handle != INVALID_HANDLE) IndicatorRelease(g_adx_handle);
 }
 
 //+------------------------------------------------------------------+
@@ -295,11 +304,23 @@ bool BuildSignal(TradeSignal &signal)
    double ema_slow[1];
    double rsi[1];
    double atr[1];
+   double adx[1];
+   double plus_di[1];
+   double minus_di[1];
 
    if(CopyBuffer(g_ema_fast_handle, 0, 1, 1, ema_fast) != 1) return false;
    if(CopyBuffer(g_ema_slow_handle, 0, 1, 1, ema_slow) != 1) return false;
    if(CopyBuffer(g_rsi_handle, 0, 1, 1, rsi) != 1) return false;
    if(CopyBuffer(g_atr_handle, 0, 1, 1, atr) != 1) return false;
+
+   if(USE_ADX_FILTER)
+   {
+      if(CopyBuffer(g_adx_handle, 0, 1, 1, adx) != 1) return false;
+      if(CopyBuffer(g_adx_handle, 1, 1, 1, plus_di) != 1) return false;
+      if(CopyBuffer(g_adx_handle, 2, 1, 1, minus_di) != 1) return false;
+      if(adx[0] < MIN_ADX_VALUE)
+         return false;
+   }
 
    double open_price = iOpen(g_symbol, PERIOD_CURRENT, 1);
    double close_price = iClose(g_symbol, PERIOD_CURRENT, 1);
@@ -326,13 +347,19 @@ bool BuildSignal(TradeSignal &signal)
    bool bullish_close = close_price > open_price;
    bool bearish_close = close_price < open_price;
 
-   bool buy_setup = ema_fast[0] > ema_slow[0] && close_price > ema_fast[0] && rsi[0] >= RSI_BUY_MIN && rsi[0] <= RSI_BUY_MAX;
-   bool sell_setup = ema_fast[0] < ema_slow[0] && close_price < ema_fast[0] && rsi[0] >= RSI_SELL_MIN && rsi[0] <= RSI_SELL_MAX;
+   bool buy_setup = ENABLE_BUY_SIGNALS && ema_fast[0] > ema_slow[0] && close_price > ema_fast[0] && rsi[0] >= RSI_BUY_MIN && rsi[0] <= RSI_BUY_MAX;
+   bool sell_setup = ENABLE_SELL_SIGNALS && ema_fast[0] < ema_slow[0] && close_price < ema_fast[0] && rsi[0] >= RSI_SELL_MIN && rsi[0] <= RSI_SELL_MAX;
 
    if(REQUIRE_CANDLE_DIRECTION)
    {
       buy_setup = buy_setup && bullish_close;
       sell_setup = sell_setup && bearish_close;
+   }
+
+   if(USE_ADX_FILTER && REQUIRE_DI_ALIGNMENT)
+   {
+      buy_setup = buy_setup && plus_di[0] > minus_di[0];
+      sell_setup = sell_setup && minus_di[0] > plus_di[0];
    }
 
    if(buy_setup)
