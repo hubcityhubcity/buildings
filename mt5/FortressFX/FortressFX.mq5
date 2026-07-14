@@ -3,64 +3,87 @@
 //| Demo-first automation scaffold with FTMO-style guardrails.        |
 //+------------------------------------------------------------------+
 #property copyright "Hub City"
-#property version   "0.6"
+#property version   "0.7"
 #property strict
 
 #include <Trade/Trade.mqh>
 
 CTrade trade;
 
-input bool   EXECUTION_ENABLED              = false;
-input bool   FTMO_MODE                      = true;
-input double FTMO_ACCOUNT_SIZE              = 100000.0;
-input double FTMO_PROFIT_TARGET_PCT         = 10.0;
-input double FTMO_DAILY_LOSS_LIMIT_PCT      = 5.0;
-input double FTMO_MAX_LOSS_LIMIT_PCT        = 10.0;
-input double FTMO_SOFT_DAILY_STOP_PCT       = 3.5;
-input double FTMO_SOFT_TOTAL_STOP_PCT       = 7.5;
-input double MAX_RISK_PER_TRADE_PCT         = 0.25;
-input int    MAX_OPEN_TRADES                = 1;
-input int    MAGIC_NUMBER                   = 20260709;
-input int    MAX_SPREAD_POINTS              = 25;
-input int    MIN_SECONDS_BETWEEN_TRADES     = 900;
-input bool   WEEKEND_FLAT                   = true;
+enum StrategyModule
+{
+   STRATEGY_TREND_PULLBACK = 0,
+   STRATEGY_OPENING_RANGE_BREAKOUT = 1,
+   STRATEGY_DONCHIAN_BREAKOUT = 2
+};
 
-input bool   ENABLE_SIGNALS                 = true;
-input bool   ENABLE_BUY_SIGNALS             = true;
-input bool   ENABLE_SELL_SIGNALS            = true;
-input bool   TRADE_ON_NEW_BAR_ONLY          = true;
-input bool   USE_SESSION_FILTER             = true;
-input int    SESSION_START_HOUR             = 7;
-input int    SESSION_END_HOUR               = 17;
-input int    MAX_SIGNALS_PER_DAY            = 3;
+input bool           EXECUTION_ENABLED              = false;
+input bool           FTMO_MODE                      = true;
+input double         FTMO_ACCOUNT_SIZE              = 100000.0;
+input double         FTMO_PROFIT_TARGET_PCT         = 10.0;
+input double         FTMO_DAILY_LOSS_LIMIT_PCT      = 5.0;
+input double         FTMO_MAX_LOSS_LIMIT_PCT        = 10.0;
+input double         FTMO_SOFT_DAILY_STOP_PCT       = 3.5;
+input double         FTMO_SOFT_TOTAL_STOP_PCT       = 7.5;
+input double         MAX_RISK_PER_TRADE_PCT         = 0.25;
+input int            MAX_OPEN_TRADES                = 1;
+input int            MAGIC_NUMBER                   = 20260709;
+input int            MAX_SPREAD_POINTS              = 25;
+input int            MIN_SECONDS_BETWEEN_TRADES     = 900;
+input bool           WEEKEND_FLAT                   = true;
 
-input int    EMA_FAST_PERIOD                = 20;
-input int    EMA_SLOW_PERIOD                = 50;
-input int    RSI_PERIOD                     = 14;
-input int    ATR_PERIOD                     = 14;
-input double ATR_STOP_MULTIPLIER            = 1.50;
-input double ATR_TAKE_PROFIT_MULTIPLIER     = 2.50;
-input double MIN_REWARD_RISK                = 1.50;
-input int    MIN_ATR_POINTS                 = 50;
+input bool           ENABLE_SIGNALS                 = true;
+input bool           ENABLE_BUY_SIGNALS             = true;
+input bool           ENABLE_SELL_SIGNALS            = true;
+input StrategyModule STRATEGY_MODULE                = STRATEGY_TREND_PULLBACK;
+input bool           TRADE_ON_NEW_BAR_ONLY          = true;
+input bool           USE_SESSION_FILTER             = true;
+input int            SESSION_START_HOUR             = 7;
+input int            SESSION_END_HOUR               = 17;
+input int            MAX_SIGNALS_PER_DAY            = 3;
 
-input bool   USE_ADX_FILTER                 = false;
-input int    ADX_PERIOD                     = 14;
-input double MIN_ADX_VALUE                  = 18.0;
-input bool   REQUIRE_DI_ALIGNMENT           = true;
+input int            EMA_FAST_PERIOD                = 20;
+input int            EMA_SLOW_PERIOD                = 50;
+input int            RSI_PERIOD                     = 14;
+input int            ATR_PERIOD                     = 14;
+input double         ATR_STOP_MULTIPLIER            = 1.50;
+input double         ATR_TAKE_PROFIT_MULTIPLIER     = 2.50;
+input double         MIN_REWARD_RISK                = 1.50;
+input int            MIN_ATR_POINTS                 = 50;
 
-input int    MIN_BUY_EMA_SEPARATION_POINTS  = 35;
-input int    MIN_SELL_EMA_SEPARATION_POINTS = 25;
-input int    MIN_BUY_CANDLE_BODY_POINTS     = 25;
-input int    MIN_SELL_CANDLE_BODY_POINTS    = 20;
-input bool   REQUIRE_CANDLE_DIRECTION       = true;
-input double RSI_BUY_MIN                    = 55.0;
-input double RSI_BUY_MAX                    = 68.0;
-input double RSI_SELL_MIN                   = 30.0;
-input double RSI_SELL_MAX                   = 48.0;
+input bool           USE_ADX_FILTER                 = false;
+input int            ADX_PERIOD                     = 14;
+input double         MIN_ADX_VALUE                  = 18.0;
+input bool           REQUIRE_DI_ALIGNMENT           = true;
 
-input bool   USE_LOSS_STREAK_COOLDOWN       = true;
-input int    MAX_CONSECUTIVE_LOSSES         = 3;
-input int    LOSS_COOLDOWN_MINUTES          = 240;
+input int            MIN_BUY_EMA_SEPARATION_POINTS  = 35;
+input int            MIN_SELL_EMA_SEPARATION_POINTS = 25;
+input int            MIN_BUY_CANDLE_BODY_POINTS     = 25;
+input int            MIN_SELL_CANDLE_BODY_POINTS    = 20;
+input bool           REQUIRE_CANDLE_DIRECTION       = true;
+input double         RSI_BUY_MIN                    = 55.0;
+input double         RSI_BUY_MAX                    = 68.0;
+input double         RSI_SELL_MIN                   = 30.0;
+input double         RSI_SELL_MAX                   = 48.0;
+
+input int            OR_START_HOUR                  = 7;
+input int            OR_START_MINUTE                = 0;
+input int            OR_END_HOUR                    = 8;
+input int            OR_END_MINUTE                  = 0;
+input int            OR_TRADE_END_HOUR              = 17;
+input int            OR_TRADE_END_MINUTE            = 0;
+input int            OR_BREAKOUT_BUFFER_POINTS      = 5;
+input int            OR_MIN_RANGE_POINTS            = 40;
+input int            OR_MAX_RANGE_POINTS            = 250;
+input bool           OR_ONE_TRADE_PER_DAY           = true;
+
+input int            DONCHIAN_LOOKBACK_BARS         = 20;
+input int            DONCHIAN_BREAKOUT_BUFFER_POINTS= 5;
+input bool           DONCHIAN_REQUIRE_EMA_BIAS      = true;
+
+input bool           USE_LOSS_STREAK_COOLDOWN       = true;
+input int            MAX_CONSECUTIVE_LOSSES         = 3;
+input int            LOSS_COOLDOWN_MINUTES          = 240;
 
 struct TradeSignal
 {
@@ -82,6 +105,7 @@ datetime     g_last_bar_time = 0;
 int          g_day_signal_count = 0;
 int          g_consecutive_losses = 0;
 datetime     g_loss_cooldown_until = 0;
+datetime     g_orb_trade_day = 0;
 bool         g_locked = false;
 string       g_lock_reason = "";
 int          g_ema_fast_handle = INVALID_HANDLE;
@@ -110,7 +134,7 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   Print("Fortress FX initialized on ", g_symbol, ". EXECUTION_ENABLED=", EXECUTION_ENABLED, ", ENABLE_SIGNALS=", ENABLE_SIGNALS, ", v0.6 asymmetric filters active.");
+   Print("Fortress FX initialized on ", g_symbol, ". v0.7 strategy module pack active. Module=", (int)STRATEGY_MODULE, ", EXECUTION_ENABLED=", EXECUTION_ENABLED);
    return(INIT_SUCCEEDED);
 }
 
@@ -372,13 +396,7 @@ bool BuildSignal(TradeSignal &signal)
    if(!ENABLE_SIGNALS)
       return false;
 
-   signal.direction = "";
-   signal.entry = 0.0;
-   signal.stop_loss = 0.0;
-   signal.take_profit = 0.0;
-   signal.risk_points = 0.0;
-   signal.reward_points = 0.0;
-   signal.lots = 0.0;
+   ResetSignal(signal);
 
    double ema_fast[1];
    double ema_slow[1];
@@ -404,11 +422,11 @@ bool BuildSignal(TradeSignal &signal)
 
    double open_price = iOpen(g_symbol, PERIOD_CURRENT, 1);
    double close_price = iClose(g_symbol, PERIOD_CURRENT, 1);
-   if(open_price <= 0.0 || close_price <= 0.0)
-      return false;
+   double high_price = iHigh(g_symbol, PERIOD_CURRENT, 1);
+   double low_price = iLow(g_symbol, PERIOD_CURRENT, 1);
 
-   double candle_body_points = MathAbs(close_price - open_price) / _Point;
-   double ema_separation_points = MathAbs(ema_fast[0] - ema_slow[0]) / _Point;
+   if(open_price <= 0.0 || close_price <= 0.0 || high_price <= 0.0 || low_price <= 0.0)
+      return false;
 
    double atr_points = atr[0] / _Point;
    if(atr_points < MIN_ATR_POINTS)
@@ -419,11 +437,51 @@ bool BuildSignal(TradeSignal &signal)
    if(ask <= 0.0 || bid <= 0.0)
       return false;
 
+   bool built = false;
+
+   if(STRATEGY_MODULE == STRATEGY_TREND_PULLBACK)
+      built = BuildTrendPullback(signal, ema_fast[0], ema_slow[0], rsi[0], atr[0], open_price, close_price, ask, bid);
+   else if(STRATEGY_MODULE == STRATEGY_OPENING_RANGE_BREAKOUT)
+      built = BuildOpeningRangeBreakout(signal, atr[0], close_price, ask, bid);
+   else if(STRATEGY_MODULE == STRATEGY_DONCHIAN_BREAKOUT)
+      built = BuildDonchianBreakout(signal, ema_fast[0], ema_slow[0], atr[0], close_price, ask, bid);
+
+   if(!built)
+      return false;
+
+   if(USE_ADX_FILTER && REQUIRE_DI_ALIGNMENT)
+   {
+      if(signal.direction == "BUY" && plus_di[0] <= minus_di[0])
+         return false;
+      if(signal.direction == "SELL" && minus_di[0] <= plus_di[0])
+         return false;
+   }
+
+   return true;
+}
+
+//+------------------------------------------------------------------+
+void ResetSignal(TradeSignal &signal)
+{
+   signal.direction = "";
+   signal.entry = 0.0;
+   signal.stop_loss = 0.0;
+   signal.take_profit = 0.0;
+   signal.risk_points = 0.0;
+   signal.reward_points = 0.0;
+   signal.lots = 0.0;
+}
+
+//+------------------------------------------------------------------+
+bool BuildTrendPullback(TradeSignal &signal, double ema_fast, double ema_slow, double rsi, double atr, double open_price, double close_price, double ask, double bid)
+{
+   double candle_body_points = MathAbs(close_price - open_price) / _Point;
+   double ema_separation_points = MathAbs(ema_fast - ema_slow) / _Point;
    bool bullish_close = close_price > open_price;
    bool bearish_close = close_price < open_price;
 
-   bool buy_setup = ENABLE_BUY_SIGNALS && ema_fast[0] > ema_slow[0] && close_price > ema_fast[0] && rsi[0] >= RSI_BUY_MIN && rsi[0] <= RSI_BUY_MAX;
-   bool sell_setup = ENABLE_SELL_SIGNALS && ema_fast[0] < ema_slow[0] && close_price < ema_fast[0] && rsi[0] >= RSI_SELL_MIN && rsi[0] <= RSI_SELL_MAX;
+   bool buy_setup = ENABLE_BUY_SIGNALS && ema_fast > ema_slow && close_price > ema_fast && rsi >= RSI_BUY_MIN && rsi <= RSI_BUY_MAX;
+   bool sell_setup = ENABLE_SELL_SIGNALS && ema_fast < ema_slow && close_price < ema_fast && rsi >= RSI_SELL_MIN && rsi <= RSI_SELL_MAX;
 
    buy_setup = buy_setup && ema_separation_points >= MIN_BUY_EMA_SEPARATION_POINTS && candle_body_points >= MIN_BUY_CANDLE_BODY_POINTS;
    sell_setup = sell_setup && ema_separation_points >= MIN_SELL_EMA_SEPARATION_POINTS && candle_body_points >= MIN_SELL_CANDLE_BODY_POINTS;
@@ -434,31 +492,167 @@ bool BuildSignal(TradeSignal &signal)
       sell_setup = sell_setup && bearish_close;
    }
 
-   if(USE_ADX_FILTER && REQUIRE_DI_ALIGNMENT)
+   if(buy_setup)
+      return SetAtrSignal(signal, "BUY", ask, atr);
+
+   if(sell_setup)
+      return SetAtrSignal(signal, "SELL", bid, atr);
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+bool BuildOpeningRangeBreakout(TradeSignal &signal, double atr, double close_price, double ask, double bid)
+{
+   datetime range_start = TodayAt(OR_START_HOUR, OR_START_MINUTE);
+   datetime range_end = TodayAt(OR_END_HOUR, OR_END_MINUTE);
+   datetime trade_end = TodayAt(OR_TRADE_END_HOUR, OR_TRADE_END_MINUTE);
+   datetime now = TimeCurrent();
+
+   if(now < range_end || now >= trade_end)
+      return false;
+
+   if(OR_ONE_TRADE_PER_DAY && g_orb_trade_day == g_day_start_time)
+      return false;
+
+   double range_high = 0.0;
+   double range_low = 0.0;
+   if(!CalculateOpeningRange(range_start, range_end, range_high, range_low))
+      return false;
+
+   double range_points = (range_high - range_low) / _Point;
+   if(range_points < OR_MIN_RANGE_POINTS || range_points > OR_MAX_RANGE_POINTS)
+      return false;
+
+   double buy_trigger = range_high + (OR_BREAKOUT_BUFFER_POINTS * _Point);
+   double sell_trigger = range_low - (OR_BREAKOUT_BUFFER_POINTS * _Point);
+
+   if(ENABLE_BUY_SIGNALS && close_price > buy_trigger)
+      return SetAtrSignal(signal, "BUY", ask, atr);
+
+   if(ENABLE_SELL_SIGNALS && close_price < sell_trigger)
+      return SetAtrSignal(signal, "SELL", bid, atr);
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+bool CalculateOpeningRange(datetime range_start, datetime range_end, double &range_high, double &range_low)
+{
+   MqlRates rates[];
+   int copied = CopyRates(g_symbol, PERIOD_CURRENT, range_start, range_end, rates);
+   if(copied <= 0)
+      return false;
+
+   range_high = -1.0e100;
+   range_low = 1.0e100;
+
+   for(int i = 0; i < copied; i++)
    {
-      buy_setup = buy_setup && plus_di[0] > minus_di[0];
-      sell_setup = sell_setup && minus_di[0] > plus_di[0];
+      if(rates[i].time >= range_start && rates[i].time < range_end)
+      {
+         if(rates[i].high > range_high) range_high = rates[i].high;
+         if(rates[i].low < range_low) range_low = rates[i].low;
+      }
+   }
+
+   return (range_high > range_low && range_high > 0.0 && range_low > 0.0);
+}
+
+//+------------------------------------------------------------------+
+bool BuildDonchianBreakout(TradeSignal &signal, double ema_fast, double ema_slow, double atr, double close_price, double ask, double bid)
+{
+   if(DONCHIAN_LOOKBACK_BARS < 5)
+      return false;
+
+   double highest_high = HighestHigh(DONCHIAN_LOOKBACK_BARS, 2);
+   double lowest_low = LowestLow(DONCHIAN_LOOKBACK_BARS, 2);
+   if(highest_high <= 0.0 || lowest_low <= 0.0 || highest_high <= lowest_low)
+      return false;
+
+   double buy_trigger = highest_high + (DONCHIAN_BREAKOUT_BUFFER_POINTS * _Point);
+   double sell_trigger = lowest_low - (DONCHIAN_BREAKOUT_BUFFER_POINTS * _Point);
+
+   bool buy_setup = ENABLE_BUY_SIGNALS && close_price > buy_trigger;
+   bool sell_setup = ENABLE_SELL_SIGNALS && close_price < sell_trigger;
+
+   if(DONCHIAN_REQUIRE_EMA_BIAS)
+   {
+      buy_setup = buy_setup && ema_fast > ema_slow;
+      sell_setup = sell_setup && ema_fast < ema_slow;
    }
 
    if(buy_setup)
+      return SetAtrSignal(signal, "BUY", ask, atr);
+
+   if(sell_setup)
+      return SetAtrSignal(signal, "SELL", bid, atr);
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+double HighestHigh(int lookback, int start_shift)
+{
+   double result = -1.0e100;
+   for(int i = start_shift; i < start_shift + lookback; i++)
    {
-      signal.direction = "BUY";
-      signal.entry = ask;
-      signal.stop_loss = NormalizeDouble(signal.entry - (atr[0] * ATR_STOP_MULTIPLIER), _Digits);
-      signal.take_profit = NormalizeDouble(signal.entry + (atr[0] * ATR_TAKE_PROFIT_MULTIPLIER), _Digits);
+      double high = iHigh(g_symbol, PERIOD_CURRENT, i);
+      if(high <= 0.0)
+         return 0.0;
+      if(high > result)
+         result = high;
+   }
+   return result;
+}
+
+//+------------------------------------------------------------------+
+double LowestLow(int lookback, int start_shift)
+{
+   double result = 1.0e100;
+   for(int i = start_shift; i < start_shift + lookback; i++)
+   {
+      double low = iLow(g_symbol, PERIOD_CURRENT, i);
+      if(low <= 0.0)
+         return 0.0;
+      if(low < result)
+         result = low;
+   }
+   return result;
+}
+
+//+------------------------------------------------------------------+
+bool SetAtrSignal(TradeSignal &signal, string direction, double entry, double atr)
+{
+   signal.direction = direction;
+   signal.entry = entry;
+
+   if(direction == "BUY")
+   {
+      signal.stop_loss = NormalizeDouble(entry - (atr * ATR_STOP_MULTIPLIER), _Digits);
+      signal.take_profit = NormalizeDouble(entry + (atr * ATR_TAKE_PROFIT_MULTIPLIER), _Digits);
       return true;
    }
 
-   if(sell_setup)
+   if(direction == "SELL")
    {
-      signal.direction = "SELL";
-      signal.entry = bid;
-      signal.stop_loss = NormalizeDouble(signal.entry + (atr[0] * ATR_STOP_MULTIPLIER), _Digits);
-      signal.take_profit = NormalizeDouble(signal.entry - (atr[0] * ATR_TAKE_PROFIT_MULTIPLIER), _Digits);
+      signal.stop_loss = NormalizeDouble(entry + (atr * ATR_STOP_MULTIPLIER), _Digits);
+      signal.take_profit = NormalizeDouble(entry - (atr * ATR_TAKE_PROFIT_MULTIPLIER), _Digits);
       return true;
    }
 
    return false;
+}
+
+//+------------------------------------------------------------------+
+datetime TodayAt(int hour, int minute)
+{
+   MqlDateTime current;
+   TimeToStruct(g_day_start_time, current);
+   current.hour = hour;
+   current.min = minute;
+   current.sec = 0;
+   return StructToTime(current);
 }
 
 //+------------------------------------------------------------------+
@@ -531,7 +725,9 @@ void ExecuteSignal(TradeSignal &signal)
    {
       g_last_trade_time = TimeCurrent();
       g_day_signal_count++;
-      Print("Order sent: ", signal.direction, " lots=", signal.lots, " sl=", signal.stop_loss, " tp=", signal.take_profit, " dailySignals=", g_day_signal_count);
+      if(STRATEGY_MODULE == STRATEGY_OPENING_RANGE_BREAKOUT)
+         g_orb_trade_day = g_day_start_time;
+      Print("Order sent: ", signal.direction, " lots=", signal.lots, " sl=", signal.stop_loss, " tp=", signal.take_profit, " dailySignals=", g_day_signal_count, " module=", (int)STRATEGY_MODULE);
    }
    else
    {
