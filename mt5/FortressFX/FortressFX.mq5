@@ -3,7 +3,7 @@
 //| Demo-first automation scaffold with FTMO-style guardrails.        |
 //+------------------------------------------------------------------+
 #property copyright "Hub City"
-#property version   "0.5"
+#property version   "0.6"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -33,25 +33,34 @@ input bool   USE_SESSION_FILTER             = true;
 input int    SESSION_START_HOUR             = 7;
 input int    SESSION_END_HOUR               = 17;
 input int    MAX_SIGNALS_PER_DAY            = 3;
+
 input int    EMA_FAST_PERIOD                = 20;
 input int    EMA_SLOW_PERIOD                = 50;
 input int    RSI_PERIOD                     = 14;
 input int    ATR_PERIOD                     = 14;
-input bool   USE_ADX_FILTER                 = true;
-input int    ADX_PERIOD                     = 14;
-input double MIN_ADX_VALUE                  = 18.0;
-input bool   REQUIRE_DI_ALIGNMENT           = true;
 input double ATR_STOP_MULTIPLIER            = 1.50;
 input double ATR_TAKE_PROFIT_MULTIPLIER     = 2.50;
 input double MIN_REWARD_RISK                = 1.50;
 input int    MIN_ATR_POINTS                 = 50;
-input int    MIN_EMA_SEPARATION_POINTS      = 25;
-input int    MIN_CANDLE_BODY_POINTS         = 20;
+
+input bool   USE_ADX_FILTER                 = false;
+input int    ADX_PERIOD                     = 14;
+input double MIN_ADX_VALUE                  = 18.0;
+input bool   REQUIRE_DI_ALIGNMENT           = true;
+
+input int    MIN_BUY_EMA_SEPARATION_POINTS  = 35;
+input int    MIN_SELL_EMA_SEPARATION_POINTS = 25;
+input int    MIN_BUY_CANDLE_BODY_POINTS     = 25;
+input int    MIN_SELL_CANDLE_BODY_POINTS    = 20;
 input bool   REQUIRE_CANDLE_DIRECTION       = true;
-input double RSI_BUY_MIN                    = 52.0;
-input double RSI_BUY_MAX                    = 70.0;
+input double RSI_BUY_MIN                    = 55.0;
+input double RSI_BUY_MAX                    = 68.0;
 input double RSI_SELL_MIN                   = 30.0;
 input double RSI_SELL_MAX                   = 48.0;
+
+input bool   USE_LOSS_STREAK_COOLDOWN       = true;
+input int    MAX_CONSECUTIVE_LOSSES         = 3;
+input int    LOSS_COOLDOWN_MINUTES          = 240;
 
 struct TradeSignal
 {
@@ -71,6 +80,8 @@ double       g_initial_balance = 0.0;
 datetime     g_last_trade_time = 0;
 datetime     g_last_bar_time = 0;
 int          g_day_signal_count = 0;
+int          g_consecutive_losses = 0;
+datetime     g_loss_cooldown_until = 0;
 bool         g_locked = false;
 string       g_lock_reason = "";
 int          g_ema_fast_handle = INVALID_HANDLE;
@@ -99,7 +110,7 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   Print("Fortress FX initialized on ", g_symbol, ". EXECUTION_ENABLED=", EXECUTION_ENABLED, ", ENABLE_SIGNALS=", ENABLE_SIGNALS, ", v0.5 ADX/directional filters active.");
+   Print("Fortress FX initialized on ", g_symbol, ". EXECUTION_ENABLED=", EXECUTION_ENABLED, ", ENABLE_SIGNALS=", ENABLE_SIGNALS, ", v0.6 asymmetric filters active.");
    return(INIT_SUCCEEDED);
 }
 
@@ -114,10 +125,59 @@ void OnDeinit(const int reason)
 }
 
 //+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &request, const MqlTradeResult &result)
+{
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+
+   ulong deal_ticket = trans.deal;
+   if(deal_ticket == 0)
+      return;
+
+   if(!HistoryDealSelect(deal_ticket))
+      return;
+
+   if(HistoryDealGetString(deal_ticket, DEAL_SYMBOL) != g_symbol)
+      return;
+
+   if((int)HistoryDealGetInteger(deal_ticket, DEAL_MAGIC) != MAGIC_NUMBER)
+      return;
+
+   ENUM_DEAL_ENTRY deal_entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+   if(deal_entry != DEAL_ENTRY_OUT && deal_entry != DEAL_ENTRY_INOUT && deal_entry != DEAL_ENTRY_OUT_BY)
+      return;
+
+   double net_profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT)
+                     + HistoryDealGetDouble(deal_ticket, DEAL_SWAP)
+                     + HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+
+   if(net_profit < 0.0)
+   {
+      g_consecutive_losses++;
+      Print("Closed losing trade. Consecutive losses=", g_consecutive_losses, ", net=", DoubleToString(net_profit, 2));
+
+      if(USE_LOSS_STREAK_COOLDOWN && MAX_CONSECUTIVE_LOSSES > 0 && g_consecutive_losses >= MAX_CONSECUTIVE_LOSSES)
+      {
+         g_loss_cooldown_until = TimeCurrent() + (LOSS_COOLDOWN_MINUTES * 60);
+         Print("Loss-streak cooldown active until ", TimeToString(g_loss_cooldown_until, TIME_DATE|TIME_MINUTES), ".");
+      }
+   }
+   else if(net_profit > 0.0)
+   {
+      if(g_consecutive_losses > 0)
+         Print("Closed winning trade. Consecutive loss counter reset.");
+      g_consecutive_losses = 0;
+   }
+}
+
+//+------------------------------------------------------------------+
 void OnTick()
 {
    RefreshDailyAnchorIfNeeded();
    if(!AccountGuardAllowsTrading())
+      return;
+
+   if(LossCooldownActive())
       return;
 
    if(TRADE_ON_NEW_BAR_ONLY && !IsNewBar())
@@ -154,6 +214,26 @@ void OnTick()
    }
 
    ExecuteSignal(signal);
+}
+
+//+------------------------------------------------------------------+
+bool LossCooldownActive()
+{
+   if(!USE_LOSS_STREAK_COOLDOWN)
+      return false;
+
+   if(g_loss_cooldown_until <= 0)
+      return false;
+
+   if(TimeCurrent() >= g_loss_cooldown_until)
+   {
+      g_loss_cooldown_until = 0;
+      g_consecutive_losses = 0;
+      Print("Loss-streak cooldown cleared.");
+      return false;
+   }
+
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -328,12 +408,7 @@ bool BuildSignal(TradeSignal &signal)
       return false;
 
    double candle_body_points = MathAbs(close_price - open_price) / _Point;
-   if(candle_body_points < MIN_CANDLE_BODY_POINTS)
-      return false;
-
    double ema_separation_points = MathAbs(ema_fast[0] - ema_slow[0]) / _Point;
-   if(ema_separation_points < MIN_EMA_SEPARATION_POINTS)
-      return false;
 
    double atr_points = atr[0] / _Point;
    if(atr_points < MIN_ATR_POINTS)
@@ -349,6 +424,9 @@ bool BuildSignal(TradeSignal &signal)
 
    bool buy_setup = ENABLE_BUY_SIGNALS && ema_fast[0] > ema_slow[0] && close_price > ema_fast[0] && rsi[0] >= RSI_BUY_MIN && rsi[0] <= RSI_BUY_MAX;
    bool sell_setup = ENABLE_SELL_SIGNALS && ema_fast[0] < ema_slow[0] && close_price < ema_fast[0] && rsi[0] >= RSI_SELL_MIN && rsi[0] <= RSI_SELL_MAX;
+
+   buy_setup = buy_setup && ema_separation_points >= MIN_BUY_EMA_SEPARATION_POINTS && candle_body_points >= MIN_BUY_CANDLE_BODY_POINTS;
+   sell_setup = sell_setup && ema_separation_points >= MIN_SELL_EMA_SEPARATION_POINTS && candle_body_points >= MIN_SELL_CANDLE_BODY_POINTS;
 
    if(REQUIRE_CANDLE_DIRECTION)
    {
