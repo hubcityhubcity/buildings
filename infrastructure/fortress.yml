@@ -1,0 +1,16 @@
+services:
+  - type: worker
+    name: fortress-fx
+    runtime: docker
+    plan: starter
+    region: ohio
+    branch: fortress-fx
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m fortress_fx.main --loop
+    autoDeployTrigger: commit
+    numInstances: 1
+    maxShutdownDelaySeconds: 30
+    disk:
+      name: fortress-fx-data
+      mountPath: /app/data
+      sizeGB: 5
